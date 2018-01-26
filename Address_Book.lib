@@ -1,0 +1,142 @@
+# Address Book library
+
+book="/Users/chenyuzong/desktop/Programming/Shell/Address_Book/address_book.txt"
+# Note that if we use ~/desktop/Programming/Shell/book.txt as the path, we cannot enclose
+#it with double quotes, because inside double quotes tilde ~ has no special meaning
+
+Confirm() {
+	echo "Confirm $@ [y/n] >> "
+	read confirm
+	if [ $confirm = "y" ] || [ $confirm = "Y" ]; then
+		return 0
+	else
+		return 1
+	fi
+}
+
+
+# Function to check if a contact is already in the address book
+Find_Contact() {
+	contact_found=-1
+	if [ ! -z "$1" ]; then
+		# Here we only need grep's exit code, so we send its output to /dev/null instead of 
+		#stdout. Note that if we don't do this, this output will become the function's return 
+		#value and thus will cause [ `Find_Contact "$name"` -eq "0" ] to raise an error
+		awk -F ":" '{print $1 ;}' $book | grep -i "^$@\$" >> /dev/null 
+		contact_found=$? # contact_found will be 0 if grep found matches
+	fi
+	echo $contact_found
+}
+
+List_Contact() {
+	cat $book | awk -F ":" '{printf "Name: %s \tPhone Number: %s \tEmail: %s\n", $1, $2, $3 ;}'
+}
+
+Search_Contact() {
+	echo "Please enter the contact's name or phone number to search >> "
+	read contact_to_search
+	text=`grep -e "^.*${contact_to_search}.*\:" -i $book`
+	# Assign a variable using command substitution will let $? take the exit value of the command
+	#substituted, so here $? is the exit value of `grep "${contact_to_search}" $book`
+	if [ "$?" -ne "0" ]; then
+		echo "No matches found."
+	else
+		echo "$text" | tr ':' "\t"
+	fi
+}
+
+Add_Contact() {
+	name="$@"
+	if [ -z "$name" ]; then
+		echo "Imput new contact information : "
+		echo "Enter FirstName LastName >> "
+		read name
+	fi
+	if [ `Find_Contact "$name"` -eq "0" ]; then
+		echo "Sorry, the name ${name} already exists."
+		return 1
+	fi
+	echo "Enter Phone Number >> "
+	read phone
+	echo "Enter Email Address >> "
+	read email
+	echo
+	echo "A new contact will be added"
+	echo "Name: ${name} \t Phone Number: ${phone} \t Email: ${email}\n"
+	Confirm "Add ?"
+	if [ "$?" -eq "0" ]; then
+		# Use : as seperator since name may include whitespace
+		echo "${name}:${phone}:${email}" >> $book
+		echo "Contact Added"
+	else
+		echo "Contact Adding Cancelled"
+		return 2
+	fi
+}
+
+Remove_Contact() {
+	echo "Imput contact's name to remove >> "
+	read contact_to_remove
+	if [ `Find_Contact "$contact_to_remove"` -ne "0" ]; then
+		echo "Sorry, the name ${contact_to_remove} doesn't exists."
+		return 1
+	else
+		echo "This contact will be removed"
+		grep -e "^${contact_to_remove}\:" -i $book | \
+		awk -F ":" '{printf "Name: %s \tPhone Number: %s \tEmail: %s\n", $1, $2, $3 ;}'
+		echo 
+		Confirm "Remove ?"
+		if [ $? -eq "0" ]; then
+			grep -e "^${contact_to_remove}\:" -vi $book > ${book}.temp 
+			# Remove blank lines
+			grep -e '^\s*$' -v ${book}.temp > ${book}
+			rm ${book}.temp
+			echo "Contact Removed"
+		else
+			echo "Contact Not Removed"
+		fi
+	fi
+}
+
+Edit_Contact() {
+	echo "Enter the contact's name to edit >> "
+	read contact_to_edit
+	echo
+	if [ `Find_Contact "$contact_to_edit"` -ne "0" ]; then
+		echo "Sorry, the name ${contact_to_edit} doesn't exists."
+		echo "You can add this name as a new contact."
+		Confirm "Add $contact_to_edit as a new contact ?"
+		if [ $? -eq "0" ]; then
+			Add_Contact "$contact_to_edit"
+		else
+			echo "Contact Edit Cancelled."
+			return 1
+		fi
+	else
+		echo "We have found the following match : "
+		grep -e "^${contact_to_edit}\:" -i $book | \
+		awk -F ":" '{printf "Name: %s \tPhone Number: %s \tEmail: %s\n", $1, $2, $3 ;}'
+		echo
+		Confirm "Edit ?"
+		if [ $? -eq "0" ]; then
+			# Remove the contact firsr, then add the contact with new information
+			grep -e "^${contact_to_edit}\:" -vi $book > ${book}.temp 
+			grep -e '^\s*$' -v ${book}.temp > ${book}
+			rm ${book}.temp
+			echo
+			Add_Contact
+			while [ "$?" -ne "0" ]
+			do
+				echo "Add Contact Failed. Please Try Again."
+				echo
+				Add_Contact
+			done
+		else
+			echo "Contact Edit Cancelled"
+		fi
+	fi
+}
+
+
+
+
